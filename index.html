@@ -7,19 +7,25 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
         body { background: #f5f5f5; padding: 16px; }
-        header { display: flex; justify-content: space-between; align-items: center; background: #1a1a2e; color: white; padding: 16px 20px; border-radius: 16px; margin-bottom: 24px; }
+        header { display: flex; justify-content: space-between; align-items: center; background: #1a1a2e; color: white; padding: 16px 20px; border-radius: 16px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
         header h1 { font-size: 22px; }
-        .cart-link { background: #e94560; padding: 10px 18px; border-radius: 30px; color: white; text-decoration: none; font-weight: bold; }
+        .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .search-container { display: flex; align-items: center; background: white; border-radius: 30px; padding: 4px 16px; transition: 0.3s; }
+        .search-container input { border: none; outline: none; padding: 8px 0; font-size: 16px; width: 0px; transition: 0.3s; background: transparent; color: #1a1a2e; }
+        .search-container input.active { width: 150px; padding: 8px 8px; }
+        .search-icon { font-size: 22px; cursor: pointer; color: #1a1a2e; padding: 4px 0; }
+        .cart-link { background: #e94560; padding: 8px 16px; border-radius: 30px; color: white; text-decoration: none; font-weight: bold; font-size: 14px; white-space: nowrap; }
         .products { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 800px; margin: 0 auto; }
-        .product { background: white; border-radius: 16px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); text-align: center; }
+        .product { background: white; border-radius: 16px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); text-align: center; transition: 0.2s; }
         .product img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 12px; background: #eee; }
         .product h3 { margin: 12px 0 4px; font-size: 18px; }
         .product .price { font-size: 20px; font-weight: bold; color: #e94560; margin: 6px 0 12px; }
         .btn-add { background: #1a1a2e; color: white; border: none; padding: 10px 0; width: 100%; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn-add:active { background: #e94560; }
+        .no-results { text-align: center; padding: 40px 0; color: #888; font-size: 18px; grid-column: 1 / -1; }
         .cart { max-width: 800px; margin: 0 auto; background: white; border-radius: 16px; padding: 20px; }
-        .cart-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eee; align-items: center; }
-        .cart-item .name { flex: 1; }
+        .cart-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eee; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .cart-item .name { flex: 1; min-width: 100px; }
         .cart-item .qty { display: flex; gap: 8px; align-items: center; }
         .cart-item .qty button { background: #eee; border: none; width: 28px; height: 28px; border-radius: 50%; font-size: 18px; font-weight: bold; cursor: pointer; }
         .cart-total { font-size: 22px; font-weight: bold; text-align: right; padding: 16px 0; border-top: 2px solid #eee; margin-top: 8px; }
@@ -31,6 +37,10 @@
         .admin-panel input, .admin-panel textarea { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 12px; }
         .admin-panel button { background: #1a1a2e; color: white; border: none; padding: 14px; border-radius: 30px; width: 100%; font-size: 16px; font-weight: bold; }
         .order-item { padding: 12px; border-bottom: 1px solid #eee; }
+        @media (max-width: 480px) {
+            .search-container input.active { width: 110px; }
+            header h1 { font-size: 18px; }
+        }
         @media (min-width: 600px) { .products { grid-template-columns: repeat(3, 1fr); } }
     </style>
 </head>
@@ -38,7 +48,13 @@
 
 <header>
     <h1>🛍️ Lunox Shop</h1>
-    <a href="#cart-page" class="cart-link" id="cartLink">🛒 Корзина (<span id="cartCount">0</span>)</a>
+    <div class="header-right">
+        <div class="search-container">
+            <span class="search-icon" id="searchToggle">🔍</span>
+            <input type="text" id="searchInput" placeholder="Поиск...">
+        </div>
+        <a href="#cart-page" class="cart-link" id="cartLink">🛒 (<span id="cartCount">0</span>)</a>
+    </div>
 </header>
 
 <div id="main-page">
@@ -88,12 +104,20 @@
 
     let cart = [];
     let orders = JSON.parse(localStorage.getItem('orders')) || [];
+    let searchQuery = '';
 
     function saveOrders() { localStorage.setItem('orders', JSON.stringify(orders)); }
 
     function renderProducts() {
         const list = document.getElementById('product-list');
-        list.innerHTML = products.map(p => `
+        const filtered = products.filter(p => 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        if (filtered.length === 0) {
+            list.innerHTML = `<div class="no-results">🔍 Товаров не найдено</div>`;
+            return;
+        }
+        list.innerHTML = filtered.map(p => `
             <div class="product">
                 <img src="${p.image}" alt="${p.name}" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
                 <h3>${p.name}</h3>
@@ -102,6 +126,24 @@
             </div>
         `).join('');
     }
+
+    // Поиск
+    document.getElementById('searchToggle').addEventListener('click', () => {
+        const input = document.getElementById('searchInput');
+        input.classList.toggle('active');
+        if (input.classList.contains('active')) {
+            input.focus();
+        } else {
+            input.value = '';
+            searchQuery = '';
+            renderProducts();
+        }
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        searchQuery = e.target.value.trim();
+        renderProducts();
+    });
 
     function addToCart(id) {
         const p = products.find(x => x.id === id);
