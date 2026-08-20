@@ -29,7 +29,6 @@
         .btn-add:active { background: #e94560; }
         .no-results { text-align: center; padding: 40px 0; color: #888; font-size: 18px; grid-column: 1 / -1; }
 
-        /* Модальное окно */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
         .modal-overlay.active { display: flex; }
         .modal { background: white; border-radius: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
@@ -49,7 +48,6 @@
         .modal .quantity span { font-size: 20px; min-width: 40px; text-align: center; }
         .modal .add-to-cart { background: #e94560; color: white; border: none; padding: 14px; width: 100%; border-radius: 30px; font-size: 18px; font-weight: bold; cursor: pointer; }
 
-        /* Корзина и админка (старые стили, но адаптивные) */
         .cart, .admin-panel { max-width: 800px; margin: 0 auto; background: white; border-radius: 16px; padding: 20px; }
         .cart-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eee; align-items: center; flex-wrap: wrap; gap: 8px; }
         .cart-item .name { flex: 1; min-width: 100px; }
@@ -90,12 +88,10 @@
     </div>
 </header>
 
-<!-- Главная -->
 <div id="main-page">
     <div class="products" id="product-list"></div>
 </div>
 
-<!-- Корзина -->
 <div id="cart-page" style="display:none;">
     <a href="#" class="back-link" id="backToMain">← Назад к товарам</a>
     <div class="cart" id="cart-content">
@@ -105,6 +101,7 @@
         <form class="form-order" id="order-form">
             <input type="text" id="customerName" placeholder="Ваше имя *" required>
             <input type="tel" id="customerPhone" placeholder="Телефон *" required>
+            <input type="text" id="customerTelegram" placeholder="Telegram username (например, @username)">
             <button type="submit">Оформить заказ</button>
         </form>
     </div>
@@ -134,7 +131,6 @@
     <a href="#" class="back-link" id="backFromAdmin">← Назад</a>
     <div class="admin-panel">
         <h2 style="margin-bottom:20px;">🔧 Управление товарами</h2>
-
         <div id="adminForm">
             <h3 id="adminFormTitle">Добавить товар</h3>
             <input type="text" id="adminId" style="display:none;">
@@ -150,7 +146,7 @@
                 <input type="text" id="adminSizes" placeholder="XS:5, S:3, M:10, L:0, XL:2">
             </div>
             <button id="adminSaveBtn">Сохранить товар</button>
-            <button id="adminCancelBtn" style="background:#888; margin-top:8px;">Отмена</button>
+            <button id="adminCancelBtn" style="background:#888; margin-top:8px; display:none;">Отмена</button>
         </div>
         <hr style="margin:24px 0;">
         <h3>Список товаров</h3>
@@ -162,6 +158,11 @@
 </div>
 
 <script>
+    // ========== НАСТРОЙКА TELEGRAM БОТА (ГОТОВО) ==========
+    const TELEGRAM_BOT_TOKEN = '8675829853:AAENC3zGRQq57IGMm26ROyNbC085-I4fA8k';
+    const TELEGRAM_CHAT_ID = '8861833668';
+    // =====================================================
+
     // ----- Данные -----
     let products = JSON.parse(localStorage.getItem('lunox_products')) || [
         { id: 1, name: 'Футболка Classic', price: 1990, desc: 'Хлопок 100%', images: ['https://i.imgur.com/5xU5t6D.jpeg'], sizes: { XS: 2, S: 5, M: 10, L: 3, XL: 0 } },
@@ -177,11 +178,36 @@
     let orders = JSON.parse(localStorage.getItem('lunox_orders')) || [];
     let searchQuery = '';
 
-    // ----- Сохранение -----
     function saveData() {
         localStorage.setItem('lunox_products', JSON.stringify(products));
         localStorage.setItem('lunox_cart', JSON.stringify(cart));
         localStorage.setItem('lunox_orders', JSON.stringify(orders));
+    }
+
+    // ----- Отправка в Telegram -----
+    async function sendOrderToTelegram(order) {
+        try {
+            const text = `🛍️ *Новый заказ!*\n\n` +
+                         `👤 Имя: ${order.name}\n` +
+                         `📞 Телефон: ${order.phone}\n` +
+                         `📱 Telegram: ${order.telegram || 'не указан'}\n` +
+                         `🛒 Товары:\n${order.items.split(', ').map(i => `  • ${i}`).join('\n')}\n` +
+                         `💰 Итого: ${order.total} ₽\n` +
+                         `🕒 ${order.date}`;
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+            await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: text,
+                    parse_mode: 'Markdown'
+                })
+            });
+            console.log('✅ Уведомление в Telegram отправлено');
+        } catch (e) {
+            console.error('Ошибка отправки в Telegram:', e);
+        }
     }
 
     // ----- Рендеринг товаров -----
@@ -207,7 +233,6 @@
                 </div>
             `;
         }).join('');
-        // Клик по карточке открывает модалку
         document.querySelectorAll('.product').forEach(el => {
             el.addEventListener('click', function(e) {
                 if (e.target.closest('.btn-add')) return;
@@ -221,7 +246,6 @@
     function addToCartFromCard(id) {
         const p = products.find(x => x.id === id);
         if (!p) return;
-        // Просто добавляем без размера (или первый доступный)
         const sizes = Object.keys(p.sizes || {}).filter(k => p.sizes[k] > 0);
         let size = sizes.length ? sizes[0] : null;
         const existing = cart.find(item => item.id === id && item.size === size);
@@ -282,7 +306,6 @@
         currentProduct = p;
         currentImageIndex = 0;
         qty = 1;
-        // размер по умолчанию - первый доступный
         const sizes = Object.keys(p.sizes || {}).filter(k => p.sizes[k] > 0);
         selectedSize = sizes.length ? sizes[0] : null;
 
@@ -290,7 +313,6 @@
         document.getElementById('modalPrice').textContent = p.price + ' ₽';
         document.getElementById('modalDesc').textContent = p.desc || '';
 
-        // Карусель
         const carousel = document.getElementById('modalCarousel');
         const nav = document.getElementById('modalCarouselNav');
         const images = p.images && p.images.length ? p.images : ['https://via.placeholder.com/600x600?text=Нет+фото'];
@@ -303,7 +325,6 @@
             <button onclick="changeImage(1)">›</button>
         ` : '';
 
-        // Размеры
         const sizeContainer = document.getElementById('modalSizes');
         const allSizes = ['XS','S','M','L','XL'];
         sizeContainer.innerHTML = allSizes.map(s => {
@@ -363,18 +384,14 @@
             alert('Выберите размер (если доступен)');
             return;
         }
-        // Проверка наличия
         if (currentProduct.sizes && currentProduct.sizes[selectedSize] !== undefined) {
             if (currentProduct.sizes[selectedSize] < qty) {
                 alert(`Недостаточно товара в размере ${selectedSize}. Доступно: ${currentProduct.sizes[selectedSize]}`);
                 return;
             }
-            // Уменьшаем остаток (имитация списания)
             currentProduct.sizes[selectedSize] -= qty;
-            // Если стало 0, можно оставить
             saveData();
         }
-        // Добавляем в корзину
         const existing = cart.find(item => item.id === currentProduct.id && item.size === selectedSize);
         if (existing) {
             existing.qty += qty;
@@ -392,7 +409,6 @@
         updateCartUI();
         alert(`✅ Добавлено в корзину: ${currentProduct.name} (${selectedSize}) x${qty}`);
         closeModal();
-        // Обновляем список товаров (остатки изменились)
         renderProducts();
     });
 
@@ -435,11 +451,12 @@
         renderProducts();
     });
 
-    // ----- Оформление заказа -----
-    document.getElementById('order-form').addEventListener('submit', (e) => {
+    // ----- Оформление заказа с отправкой в Telegram -----
+    document.getElementById('order-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('customerName').value.trim();
         const phone = document.getElementById('customerPhone').value.trim();
+        const telegram = document.getElementById('customerTelegram').value.trim();
         if (!name || !phone) { alert('Заполните имя и телефон'); return; }
         if (cart.length === 0) { alert('Корзина пуста'); return; }
 
@@ -447,17 +464,23 @@
             id: Date.now(),
             name,
             phone,
+            telegram: telegram || 'не указан',
             items: cart.map(x => `${x.name} (${x.size||'без размера'}) x${x.qty}`).join(', '),
             total: cart.reduce((sum, x) => sum + x.price * x.qty, 0),
             date: new Date().toLocaleString()
         };
+
         orders.unshift(order);
         cart = [];
         saveData();
         updateCartUI();
+
+        await sendOrderToTelegram(order);
+
         alert('✅ Заказ оформлен! Мы свяжемся с вами.');
         document.getElementById('customerName').value = '';
         document.getElementById('customerPhone').value = '';
+        document.getElementById('customerTelegram').value = '';
         document.getElementById('backToMain').click();
     });
 
@@ -498,6 +521,7 @@
         list.innerHTML = orders.map(o => `
             <div class="order-item">
                 <strong>${o.name}</strong> — ${o.phone}<br>
+                ${o.telegram ? '📱 '+o.telegram+'<br>' : ''}
                 ${o.items}<br>
                 <strong>Сумма: ${o.total} ₽</strong><br>
                 <span style="color:#888;font-size:14px;">${o.date}</span>
@@ -505,7 +529,6 @@
         `).join('');
     }
 
-    // Редактирование
     let editingId = null;
     function editProduct(id) {
         const p = products.find(x => x.id === id);
@@ -516,7 +539,6 @@
         document.getElementById('adminPrice').value = p.price;
         document.getElementById('adminDesc').value = p.desc || '';
         document.getElementById('adminImages').value = (p.images || []).join('\n');
-        // sizes: преобразуем объект в строку XS:5, S:3...
         const sizeStr = Object.keys(p.sizes || {}).filter(k => p.sizes[k] > 0).map(k => `${k}:${p.sizes[k]}`).join(', ');
         document.getElementById('adminSizes').value = sizeStr;
         document.getElementById('adminFormTitle').textContent = 'Редактировать товар';
@@ -530,7 +552,7 @@
         products = products.filter(p => p.id !== id);
         saveData();
         renderAdminProducts();
-        renderProducts(); // обновить главную
+        renderProducts();
     }
 
     document.getElementById('adminCancelBtn').addEventListener('click', function() {
@@ -562,7 +584,6 @@
         const images = imagesRaw ? imagesRaw.split('\n').map(s => s.trim()).filter(s => s) : [];
         if (images.length === 0) images.push('https://via.placeholder.com/600x600?text=Нет+фото');
 
-        // Парсим размеры: XS:5, S:3 ...
         const sizes = {};
         if (sizesRaw) {
             sizesRaw.split(',').forEach(pair => {
@@ -574,7 +595,6 @@
         }
 
         if (editingId !== null) {
-            // редактирование
             const p = products.find(x => x.id === editingId);
             if (p) {
                 p.name = name;
@@ -584,7 +604,6 @@
                 p.sizes = sizes;
             }
         } else {
-            // новый товар
             const newId = products.length ? Math.max(...products.map(p => p.id)) + 1 : 1;
             products.push({ id: newId, name, price, desc, images, sizes });
         }
@@ -600,8 +619,6 @@
     checkAdmin();
     renderProducts();
     updateCartUI();
-    clearAdminForm(); // скрыть кнопку отмены
-    document.getElementById('adminCancelBtn').style.display = 'none';
 </script>
 </body>
 </html>
